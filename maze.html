@@ -1,0 +1,379 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+	<meta charset="UTF-8" />
+	<meta name="generator" content="VIM 7.3" />
+	<meta name="description" content="MAZE GENERATOR & SOLVER" />
+	<meta name="author" content="Min Zhu (Jony)" />
+	<title>MAZE GENERATOR & SOLVER</title>
+	<!--[if IE]><script src="excanvas.js"></script><![endif]-->
+	<script src="jquery-1.9.1.js"></script>
+	<script>
+		// You can customize these parameters.
+		var _debug_ = false;
+		var maze_cell_width = 16;
+		var maze_cell_height = 16;
+		var shrink_width = 6;
+		var maze_cell_border_width = 1;
+		var maze_cell_border_color = "#000000";
+		var maze_cell_background_color = "#C3FDB8";
+		var maze_cell_circle_color = "green";
+		var maze_cell_parsed_circle_color = "#8D38C9";
+		var maze_cell_start_color = "#FF0000";
+		var maze_cell_goal_color = "#0000FF";
+		var maze_row_count = 40;
+		var maze_col_count = 70;
+		var maze_g_value = 10;
+		var maze_h_value = 10;
+
+		// You don't need to change these variables.
+		var cell_count = maze_col_count * maze_row_count - 1;
+		var maze_cells = [maze_col_count * maze_row_count];
+		var visited = 1;
+		var searched = 2;
+		var solution = 3;
+		var parsed = 4;
+		var cell_stack = [];
+		var parsed_cells = [];
+		var start_cell;
+		var goal_cell = { 'x': maze_col_count - 3, 'y': maze_row_count - 1 };
+		var open_cells = [];
+		var closed_cells = [];
+		var path_cells = [];
+		var final_path = [];
+
+		$(document).ready(function () {
+			// Get Canvas Context
+			var maze_canvas = document.getElementById("maze_canvas");
+			maze_canvas.width = maze_cell_width * maze_col_count;
+			maze_canvas.height = maze_cell_height * maze_row_count;
+			var maze_context = maze_canvas.getContext("2d");
+			maze_context.fillStyle = maze_cell_background_color;
+			generate_maze(maze_context);
+		});
+
+		function generate_maze(context) {
+			// Initiate Maze Cells with walls.
+			for (x = 0; x < maze_col_count; x++) {
+				for (y = 0; y < maze_row_count; y++) {
+					maze_cells[x + y * maze_col_count] = { 't': 1, 'b': 1, 'l': 1, 'r': 1, 'v': 0, 'h': cell_count * 10, 'g': cell_count * 10 };
+				}
+			}
+			// Random Generate A Current Cell and then set it as visited: 1
+			start_cell = { 'x': Math.floor(Math.random() * maze_col_count), 'y': Math.floor(Math.random() * maze_row_count) };
+			get_maze_cell(start_cell).v = visited;
+			generate_maze_cell(context, start_cell);
+			solve_maze();
+			draw_maze(context);
+		}
+
+		// Solve the maze with A* search.
+		// f = g + h
+		function solve_maze() {
+			init_g_h_value(start_cell);
+			open_cells.push(start_cell);
+			while (open_cells.length > 0) {
+				// Find the Min Cell (lowest f value) in current open cells.
+				var min_f = cell_count * 10;
+				var min_cell;
+				var min_index;
+				for (i = 0; i < open_cells.length; i++) {
+					var cell = open_cells[i];
+					var cell_f = get_maze_cell(cell).h + get_maze_cell(cell).g;
+					if (cell_f < min_f) {
+						min_f = cell_f;
+						min_cell = cell;
+						min_index = i;
+					}
+				}
+
+				// If reached goal, break the loop.
+				if (min_cell.x == goal_cell.x && min_cell.y == goal_cell.y) {
+					break;
+				}
+
+				// Mark current min cell as searched and remove it from open cells array.
+				get_maze_cell(min_cell).v = searched;
+				open_cells.splice(min_index, 1);
+				// Parsing Neighbors.
+				var neighbors = [];
+				var neighbor_cell;
+				// the left neighbor
+				if ((min_cell.x - 1) >= 0) {
+					neighbor_cell = get_maze_cell({ 'x': min_cell.x - 1, 'y': min_cell.y });
+					// if neighbor has been searched, then skip it.
+					// or, add it to neighors array for further process.
+					if (neighbor_cell.v != searched) {
+						if (neighbor_cell.r == 0) {
+							init_g_h_value({ 'x': min_cell.x - 1, 'y': min_cell.y });
+							neighbors.push({ 'x': min_cell.x - 1, 'y': min_cell.y });
+							parsed_cells.push({ 'x': min_cell.x - 1, 'y': min_cell.y });
+						}
+					}
+				}
+				// the right neighbor
+				if ((min_cell.x + 1) < maze_col_count) {
+					neighbor_cell = get_maze_cell({ 'x': min_cell.x + 1, 'y': min_cell.y });
+					if (neighbor_cell.v != searched) {
+						if (neighbor_cell.l == 0) {
+							init_g_h_value({ 'x': min_cell.x + 1, 'y': min_cell.y });
+							neighbors.push({ 'x': min_cell.x + 1, 'y': min_cell.y });
+							parsed_cells.push({ 'x': min_cell.x + 1, 'y': min_cell.y });
+						}
+					}
+				}
+				// the top neighbor
+				if ((min_cell.y - 1) >= 0) {
+					neighbor_cell = get_maze_cell({ 'x': min_cell.x, 'y': min_cell.y - 1 });
+					if (neighbor_cell.v != searched) {
+						if (neighbor_cell.b == 0) {
+							init_g_h_value({ 'x': min_cell.x, 'y': min_cell.y - 1 });
+							neighbors.push({ 'x': min_cell.x, 'y': min_cell.y - 1 });
+							parsed_cells.push({ 'x': min_cell.x, 'y': min_cell.y - 1 });
+						}
+					}
+				}
+				// the bottom neighbor
+				if ((min_cell.y + 1) < maze_row_count) {
+					neighbor_cell = get_maze_cell({ 'x': min_cell.x, 'y': min_cell.y + 1 });
+					if (neighbor_cell.v != searched) {
+						if (neighbor_cell.t == 0) {
+							init_g_h_value({ 'x': min_cell.x, 'y': min_cell.y + 1 });
+							neighbors.push({ 'x': min_cell.x, 'y': min_cell.y + 1 });
+							parsed_cells.push({ 'x': min_cell.x, 'y': min_cell.y + 1 });
+						}
+					}
+				}
+
+				// loop in neighbors to find out the optimized path.
+				for (i = 0; i < neighbors.length; i++) {
+					var neighbor = neighbors[i];
+					var is_in_open_cells = false;
+					// check if current neighbor is in open cells array.
+					// cell in open cells array should be treated differently since
+					//  its g value has been updated.
+					for (j = 0; j < open_cells.length; j++) {
+						var open_cell = open_cells[j];
+						if (open_cell.x == neighbor.x && open_cell.y == neighbor.y) {
+							is_in_open_cells = true;
+							break;
+						}
+					}
+					// from min cell to current neighbor's g value (distance from start cell.
+					var temp_g = maze_g_value + get_maze_cell(min_cell).g;
+					if (is_in_open_cells) {
+						// if currrent neighbor is in the open cells array and
+						// it's g value from the min cell is smaller than the g value from other cells
+						// then update its g value and mark the path.
+						if (temp_g < get_maze_cell(neighbor).g) {
+							path_cells.push({ 'from': min_cell, 'to': neighbor });
+							get_maze_cell(neighbor).g = temp_g;
+						}
+					} else {
+						open_cells.push(neighbor);
+						path_cells.push({ 'from': min_cell, 'to': neighbor });
+						get_maze_cell(neighbor).g = temp_g;
+					}
+				}
+			}
+			reformate_path(goal_cell);
+		}
+
+		// Draw maze.
+		function draw_maze(context) {
+			// Draw maze cells.
+			for (x = 0; x < maze_col_count; x++) {
+				for (y = 0; y < maze_row_count; y++) {
+					draw_cell(context, { 'x': x, 'y': y });
+				}
+			}
+			// Draw parsed cells.
+			for (i = 0; i < parsed_cells.length; i++) {
+				var cell = parsed_cells[i];
+				draw_circle(context, cell, parsed);
+			}
+			// Draw path solution cells.
+			for (i = 0; i < final_path.length; i++) {
+				var cell = final_path[i];
+				draw_circle(context, cell, solution);
+			}
+		}
+
+
+		// Get Maze Cell according to its location. 
+		function get_maze_cell(cell) {
+			if (cell == null || cell.x < 0 || cell.x >= maze_col_count || cell.y < 0 || cell.y >= maze_row_count) {
+				return null;
+			}
+			return maze_cells[cell.x + cell.y * maze_col_count];
+		}
+
+		// Draw Maze Cell
+		function draw_cell(context, cell) {
+			if (cell == null) { return; }
+			var draw_x = cell.x * maze_cell_width;
+			var draw_y = cell.y * maze_cell_height;
+
+			var maze_cell = get_maze_cell(cell);
+			context.save();
+			// Fill Cell
+			context.beginPath();
+			context.fillRect(draw_x + maze_cell_border_width,
+					draw_y + maze_cell_border_width,
+					maze_cell_width,
+					maze_cell_height);
+			context.closePath();
+			if (cell.x == start_cell.x && cell.y == start_cell.y || cell.x == goal_cell.x && cell.y == goal_cell.y) {
+				draw_circle(context, cell, solution);
+			}
+
+			// Draw Cell Border
+			context.beginPath();
+			if (maze_cell.l == 1) {
+				context.strokeStyle = maze_cell_border_color;
+			} else {
+				context.strokeStyle = maze_cell_background_color;
+			}
+			context.moveTo(draw_x, draw_y);
+			context.lineTo(draw_x, draw_y + maze_cell_height);
+			context.closePath();
+			context.stroke();
+			context.beginPath();
+			if (maze_cell.r == 1) {
+				context.strokeStyle = maze_cell_border_color;
+			} else {
+				context.strokeStyle = maze_cell_background_color;
+			}
+			context.moveTo(draw_x + maze_cell_width, draw_y);
+			context.lineTo(draw_x + maze_cell_width, draw_y + maze_cell_height);
+			context.closePath();
+			context.stroke();
+			context.beginPath();
+			if (maze_cell.t == 1) {
+				context.strokeStyle = maze_cell_border_color;
+			} else {
+				context.strokeStyle = maze_cell_background_color;
+			}
+			context.moveTo(draw_x, draw_y);
+			context.lineTo(draw_x + maze_cell_width, draw_y);
+			context.closePath();
+			context.stroke();
+			context.beginPath();
+			if (maze_cell.b == 1) {
+				context.strokeStyle = maze_cell_border_color;
+			} else {
+				context.strokeStyle = maze_cell_background_color;
+			}
+			context.moveTo(draw_x, draw_y + maze_cell_height);
+			context.lineTo(draw_x + maze_cell_width, draw_y + maze_cell_height);
+			context.closePath();
+			context.stroke();
+			context.restore();
+		}
+
+		// Draw Circle for start cell, goal cell and path cells.
+		function draw_circle(context, cell, flag) {
+			context.save();
+			context.beginPath();
+			if (flag == parsed) {
+				context.strokeStyle = maze_cell_parsed_circle_color;
+				context.fillStyle = maze_cell_parsed_circle_color;
+			} else {
+				context.strokeStyle = maze_cell_circle_color;
+				context.fillStyle = maze_cell_circle_color;
+			}
+			var current_shrink_width = shrink_width;
+			if (cell.x == start_cell.x && cell.y == start_cell.y) {
+				context.strokeStyle = maze_cell_start_color;
+				context.fillStyle = maze_cell_start_color;
+				current_shrink_width = current_shrink_width / 2;
+			}
+			if (cell.x == goal_cell.x && cell.y == goal_cell.y) {
+				context.strokeStyle = maze_cell_goal_color;
+				context.fillStyle = maze_cell_goal_color;
+				current_shrink_width = current_shrink_width / 2;
+			}
+			context.arc(cell.x * maze_cell_width + maze_cell_width / 2, cell.y * maze_cell_height + maze_cell_height / 2, (maze_cell_height - maze_cell_border_width * current_shrink_width) / 2, 0, 2 * Math.PI, false);
+			context.closePath();
+			context.stroke();
+			context.fill();
+			context.restore();
+		}
+
+
+		function generate_maze_cell(context, current_cell) {
+			var neighbors = [];
+			if ((current_cell.x - 1) >= 0 && get_maze_cell({ 'x': current_cell.x - 1, 'y': current_cell.y }).v != visited) {
+				neighbors.push({ 'x': current_cell.x - 1, 'y': current_cell.y });
+			}
+			if ((current_cell.x + 1) < maze_col_count && get_maze_cell({ 'x': current_cell.x + 1, 'y': current_cell.y }).v != visited) {
+				neighbors.push({ 'x': current_cell.x + 1, 'y': current_cell.y });
+			}
+			if ((current_cell.y - 1) >= 0 && get_maze_cell({ 'x': current_cell.x, 'y': current_cell.y - 1 }).v != visited) {
+				neighbors.push({ 'x': current_cell.x, 'y': current_cell.y - 1 });
+			}
+			if ((current_cell.y + 1) < maze_row_count && get_maze_cell({ 'x': current_cell.x, 'y': current_cell.y + 1 }).v != visited) {
+				neighbors.push({ 'x': current_cell.x, 'y': current_cell.y + 1 });
+			}
+			if (neighbors.length > 0) {
+				var r = Math.floor(Math.random() * neighbors.length);
+				var next_cell = neighbors[r];
+				get_maze_cell(next_cell).v = visited;
+				if (_debug_) {
+					$("#div_message").append(" Current[x,y]="+current_cell.x+","+current_cell.y+"; Next[x,y]="+next_cell.x+","+next_cell.y+"<br>");
+				}
+				remove_walls(context, next_cell, current_cell);
+				cell_stack.push(current_cell);
+				generate_maze_cell(context, next_cell);
+			} else {
+				var next_cell = cell_stack.pop();
+				if (next_cell != null) {
+					generate_maze_cell(context, next_cell);
+				}
+			}
+		}
+
+		// Remove walls between to connected cells.
+		function remove_walls(context, next_cell, current_cell) {
+			if (next_cell.x < current_cell.x) {
+				get_maze_cell(current_cell).l = 0;
+				get_maze_cell(next_cell).r = 0;
+			}
+			if (next_cell.x > current_cell.x) {
+				get_maze_cell(current_cell).r = 0;
+				get_maze_cell(next_cell).l = 0;
+			}
+			if (next_cell.y < current_cell.y) {
+				get_maze_cell(current_cell).t = 0;
+				get_maze_cell(next_cell).b = 0;
+			}
+			if (next_cell.y > current_cell.y) {
+				get_maze_cell(current_cell).b = 0;
+				get_maze_cell(next_cell).t = 0;
+			}
+			//draw_cell(context,current_cell);
+			//draw_cell(context,next_cell);
+		}
+
+		function reformate_path(cell) {
+			for (i = 0; i < path_cells.length; i++) {
+				var to_cell = path_cells[i].to;
+				if (to_cell.x == cell.x && to_cell.y == cell.y) {
+					var from_cell = path_cells[i].from;
+					final_path.push(from_cell);
+					get_maze_cell(from_cell).v = solution;
+					reformate_path(from_cell);
+				}
+			}
+		}
+		function init_g_h_value(cell) {
+			get_maze_cell(cell).g = maze_g_value;
+			get_maze_cell(cell).h = maze_h_value * (Math.abs(cell.x - goal_cell.x) + Math.abs(cell.y - goal_cell.y));
+		}
+	</script>
+</head>
+<body>
+	<canvas id="maze_canvas" width="600" height="400"></canvas>
+	<div id="div_message"></div>
+</body>
+</html>
